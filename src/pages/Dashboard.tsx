@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Calendar, Dumbbell, DoorOpen, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import logo from "@/assets/6713-logo.png";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -69,9 +70,11 @@ const Dashboard = () => {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
         <div className="container mx-auto px-4 py-6 flex justify-between items-center">
-          <div>
-            <h1 className="text-4xl font-bold text-primary">6713</h1>
-            <p className="text-sm text-muted-foreground">Members Dashboard</p>
+          <div className="flex items-center gap-4">
+            <img src={logo} alt="6713 Club" className="h-12" />
+            <div>
+              <p className="text-sm text-muted-foreground">Members Dashboard</p>
+            </div>
           </div>
           <Button
             onClick={handleSignOut}

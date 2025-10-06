@@ -7,27 +7,84 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, CheckCircle, XCircle, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
+
+interface Event {
+  id: string;
+  title: string;
+  description: string | null;
+  event_date: string;
+  event_time: string;
+  status: string;
+  created_by: string;
+  google_calendar_id: string | null;
+}
 
 const Events = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [showRequestForm, setShowRequestForm] = useState(false);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [myEvents, setMyEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
   const [eventTitle, setEventTitle] = useState("");
   const [eventDescription, setEventDescription] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string>("");
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate("/");
-      }
-    });
+    checkAuth();
+    fetchEvents();
   }, [navigate]);
+
+  const checkAuth = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      navigate("/");
+    } else {
+      setCurrentUserId(session.user.id);
+    }
+  };
+
+  const fetchEvents = async () => {
+    try {
+      // Fetch all approved events
+      const { data: approvedEvents, error: approvedError } = await supabase
+        .from("events")
+        .select("*")
+        .eq("status", "approved")
+        .order("event_date", { ascending: true });
+
+      if (approvedError) throw approvedError;
+
+      // Fetch current user's events
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: userEvents, error: userError } = await supabase
+          .from("events")
+          .select("*")
+          .eq("created_by", user.id)
+          .order("created_at", { ascending: false });
+
+        if (userError) throw userError;
+        setMyEvents(userEvents || []);
+      }
+
+      setEvents(approvedEvents || []);
+    } catch (error: any) {
+      toast({
+        title: "Error fetching events",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmitRequest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,11 +94,22 @@ const Events = () => {
       
       if (!user) throw new Error("Not authenticated");
 
-      // Here you would insert the event request into your database
-      // For now, we'll just show a success message
+      const { error } = await supabase
+        .from("events")
+        .insert({
+          title: eventTitle,
+          description: eventDescription,
+          event_date: eventDate,
+          event_time: eventTime,
+          created_by: user.id,
+          status: "pending",
+        });
+
+      if (error) throw error;
+
       toast({
         title: "Event request submitted!",
-        description: "We'll review your request and get back to you soon.",
+        description: "Your event is pending approval.",
       });
 
       setShowRequestForm(false);
@@ -49,6 +117,7 @@ const Events = () => {
       setEventDescription("");
       setEventDate("");
       setEventTime("");
+      fetchEvents();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -56,6 +125,47 @@ const Events = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      const { error } = await supabase
+        .from("events")
+        .delete()
+        .eq("id", eventId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Event deleted",
+        description: "Your event request has been removed.",
+      });
+
+      fetchEvents();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "approved":
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case "rejected":
+        return <XCircle className="h-4 w-4 text-red-500" />;
+      default:
+        return <Clock className="h-4 w-4 text-yellow-500" />;
+    }
+  };
+
+  const getEventsForSelectedDate = () => {
+    if (!date) return [];
+    const selectedDate = format(date, "yyyy-MM-dd");
+    return events.filter((event) => event.event_date === selectedDate);
   };
 
   return (
@@ -77,29 +187,102 @@ const Events = () => {
       </header>
 
       <main className="container mx-auto px-4 py-12">
-        <div className="max-w-4xl mx-auto space-y-8">
-          <Card className="p-8 bg-card border-border">
-            <h2 className="text-2xl font-bold text-foreground mb-6">Event Calendar</h2>
-            <div className="flex justify-center">
-              <Calendar
-                mode="single"
-                selected={date}
-                onSelect={setDate}
-                className="rounded-md border border-border"
-              />
-            </div>
-            {date && (
-              <p className="text-center mt-4 text-muted-foreground">
-                Selected: {format(date, "PPP")}
-              </p>
-            )}
-          </Card>
+        <div className="max-w-6xl mx-auto space-y-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Calendar Section */}
+            <Card className="p-8 bg-card border-border">
+              <h2 className="text-2xl font-bold text-foreground mb-6">Event Calendar</h2>
+              <div className="flex justify-center">
+                <Calendar
+                  mode="single"
+                  selected={date}
+                  onSelect={setDate}
+                  className="rounded-md border border-border"
+                />
+              </div>
+              {date && (
+                <div className="mt-6 space-y-2">
+                  <p className="text-center font-semibold text-foreground">
+                    {format(date, "PPP")}
+                  </p>
+                  <div className="space-y-2">
+                    {getEventsForSelectedDate().length > 0 ? (
+                      getEventsForSelectedDate().map((event) => (
+                        <div
+                          key={event.id}
+                          className="p-3 bg-muted rounded-lg border border-border"
+                        >
+                          <p className="font-semibold text-foreground">{event.title}</p>
+                          <p className="text-sm text-muted-foreground">{event.event_time}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-center text-sm text-muted-foreground py-4">
+                        No events scheduled
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </Card>
 
+            {/* My Event Requests */}
+            <Card className="p-8 bg-card border-border">
+              <h2 className="text-2xl font-bold text-foreground mb-6">My Event Requests</h2>
+              <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                {myEvents.length > 0 ? (
+                  myEvents.map((event) => (
+                    <div
+                      key={event.id}
+                      className="p-4 bg-muted rounded-lg border border-border space-y-2"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-foreground">{event.title}</p>
+                            {getStatusIcon(event.status)}
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {format(parseISO(event.event_date), "PPP")} at {event.event_time}
+                          </p>
+                          {event.description && (
+                            <p className="text-sm text-muted-foreground mt-2">
+                              {event.description}
+                            </p>
+                          )}
+                          <p className="text-xs text-muted-foreground mt-2 capitalize">
+                            Status: {event.status}
+                          </p>
+                        </div>
+                        {event.status === "pending" && (
+                          <Button
+                            onClick={() => handleDeleteEvent(event.id)}
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-center text-muted-foreground py-8">
+                    No event requests yet
+                  </p>
+                )}
+              </div>
+            </Card>
+          </div>
+
+          {/* Request Event Button/Form */}
           {!showRequestForm ? (
             <Button
               onClick={() => setShowRequestForm(true)}
               className="w-full bg-primary text-primary-foreground hover:opacity-90"
             >
+              <Plus className="mr-2 h-4 w-4" />
               Request to Host an Event
             </Button>
           ) : (
@@ -124,7 +307,6 @@ const Events = () => {
                     id="description"
                     value={eventDescription}
                     onChange={(e) => setEventDescription(e.target.value)}
-                    required
                     className="bg-input border-border text-foreground min-h-[100px]"
                     placeholder="Describe your event"
                   />
@@ -175,6 +357,39 @@ const Events = () => {
               </form>
             </Card>
           )}
+
+          {/* Upcoming Events List */}
+          <Card className="p-8 bg-card border-border">
+            <h2 className="text-2xl font-bold text-foreground mb-6">Upcoming Approved Events</h2>
+            <div className="space-y-3">
+              {events.length > 0 ? (
+                events.map((event) => (
+                  <div
+                    key={event.id}
+                    className="p-4 bg-muted rounded-lg border border-border"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-semibold text-foreground">{event.title}</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {format(parseISO(event.event_date), "PPP")} at {event.event_time}
+                        </p>
+                        {event.description && (
+                          <p className="text-sm text-muted-foreground mt-2">
+                            {event.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-center text-muted-foreground py-8">
+                  No upcoming events scheduled
+                </p>
+              )}
+            </div>
+          </Card>
         </div>
       </main>
     </div>

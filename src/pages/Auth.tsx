@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import logo from "@/assets/6713-logo.png";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -76,7 +77,7 @@ const Auth = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-          <h1 className="text-6xl font-bold mb-4 text-primary">6713</h1>
+          <img src={logo} alt="6713 Club" className="h-24 mx-auto mb-6" />
           <p className="text-xl text-muted-foreground">EXCLUSIVE MEMBERS CLUB</p>
         </div>
 
